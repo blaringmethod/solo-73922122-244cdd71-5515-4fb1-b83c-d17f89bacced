@@ -34,13 +34,15 @@ def chunked(body: bytes, sizes=(5,)) -> bytes:
 def record(rtype: str, url: str, date: str, content: bytes = b"",
            digest: str | None = None,
            content_type: str = "application/http; msgtype=response",
-           extra_headers: tuple[str, ...] = ()) -> bytes:
+           extra_headers: tuple[str, ...] = (),
+           version: str = "1.0",
+           record_id: str | None = None) -> bytes:
     hdrs = [
-        "WARC/1.0",
+        f"WARC/{version}",
         f"WARC-Type: {rtype}",
         f"WARC-Target-URI: {url}",
         f"WARC-Date: {date}",
-        f"WARC-Record-ID: <urn:uuid:{uuid.uuid4()}>",
+        f"WARC-Record-ID: <{record_id or ('urn:uuid:' + str(uuid.uuid4()))}>",
         f"Content-Type: {content_type}",
     ]
     if digest is not None:
@@ -68,3 +70,36 @@ def warcinfo_record() -> bytes:
     return record("warcinfo", "", "2024-01-01T00:00:00Z",
                   b"software: gazetteer-test\r\n",
                   content_type="application/warc-fields")
+
+
+def first_segment(url: str, date: str, content: bytes, digest: str,
+                  record_id: str, total_length: int | None = None,
+                  http_status: str = "200 OK") -> bytes:
+    """First segment of a WARC 1.1 segmented response (WARC-Segment-Number 1).
+
+    WARC 1.1 puts ``WARC-Segment-Total-Length`` on the final continuation,
+    so *total_length* is accepted for call-site symmetry but not emitted.
+    """
+    return record("response", url, date, content, digest=digest,
+                  version="1.1", record_id=record_id,
+                  extra_headers=("WARC-Segment-Number: 1",))
+
+
+def continuation(url: str, date: str, content: bytes, origin_id: str,
+                 segment_number: int, total_length: int | None = None,
+                 digest: str | None = None,
+                 record_id: str | None = None) -> bytes:
+    """A WARC 1.1 continuation record for an already-started series."""
+    extra = [f"WARC-Segment-Origin-ID: <{origin_id}>",
+             f"WARC-Segment-Number: {segment_number}"]
+    if total_length is not None:
+        extra.append(f"WARC-Segment-Total-Length: {total_length}")
+    return record("continuation", url, date, content, digest=digest,
+                  version="1.1", record_id=record_id,
+                  extra_headers=tuple(extra))
+
+
+def split_http(body: bytes, cut: int) -> tuple[bytes, bytes]:
+    """Split an archived HTTP response at *cut* bytes of its content block."""
+    http = http_response(body)
+    return http[:cut], http[cut:]

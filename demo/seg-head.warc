@@ -1,0 +1,15 @@
+WARC/1.1
+WARC-Type: response
+WARC-Target-URI: http://gazetteer.example.gov.cn/zcgg/segmented-notice.html
+WARC-Date: 2025-09-01T09:00:00Z
+WARC-Record-ID: <urn:uuid:5e6f7a8b-0001-4000-8000-000000000001>
+Content-Type: application/http; msgtype=response
+WARC-Payload-Digest: sha1:IQXFID6ADX736BVSNREEKDDRNVT2XXTD
+WARC-Segment-Number: 1
+Content-Length: 60
+
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+
+é
+

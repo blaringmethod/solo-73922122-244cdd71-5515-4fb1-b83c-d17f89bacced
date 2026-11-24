@@ -26,6 +26,7 @@ class WarcFormatError(Exception):
 class WarcRecord:
     headers: dict[str, str]
     content: bytes
+    version: str = ""          # e.g. "1.1" from the WARC/1.1 version line
 
 
 @dataclass
@@ -79,6 +80,7 @@ def iter_warc_records(data: bytes):
             continue  # record separator or leading blank lines
         if not line.startswith((b"WARC/1.0", b"WARC/1.1")):
             raise WarcFormatError(f"expected WARC version line, got: {line[:60]!r}")
+        version = line[len(b"WARC/"):].strip().decode("ascii", "replace")
         header_lines: list[bytes] = []
         while True:
             hline = reader.readline()
@@ -101,10 +103,25 @@ def iter_warc_records(data: bytes):
             sep = reader.readline()
         if sep != b"":
             reader.unread(sep)
-        yield WarcRecord(headers=headers, content=content)
+        yield WarcRecord(headers=headers, content=content, version=version)
 
 
 _SHA1_B32_RE = re.compile(r"^[A-Z2-7]{32}$")
+
+
+def normalize_record_id(value: str) -> str:
+    """Normalise a WARC-Record-ID / WARC-Segment-Origin-ID value.
+
+    WARC record identifiers are ``<uri>`` tokens.  The angle brackets are
+    optional in the API so librarians can paste either form; the canonical
+    stored value omits them.
+    """
+    text = value.strip()
+    if text.startswith("<") and text.endswith(">") and len(text) > 2:
+        text = text[1:-1].strip()
+    if not text:
+        raise WarcFormatError(f"malformed WARC record id: {value!r}")
+    return text
 
 
 def normalize_payload_digest(value: str) -> str | None:

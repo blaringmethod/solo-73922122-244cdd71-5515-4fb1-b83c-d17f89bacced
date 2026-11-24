@@ -1,0 +1,13 @@
+WARC/1.1
+WARC-Type: continuation
+WARC-Target-URI: http://gazetteer.example.gov.cn/zcgg/segmented-notice.html
+WARC-Date: 2025-09-01T09:00:00Z
+WARC-Record-ID: <urn:uuid:618f27c3-0508-4c60-8e36-ffaaf81fd319>
+Content-Type: application/http; msgtype=response
+WARC-Segment-Origin-ID: <urn:uuid:5e6f7a8b-0001-4000-8000-000000000001>
+WARC-Segment-Number: 2
+WARC-Segment-Total-Length: 155
+Content-Length: 95
+
+��藏公告（分段版）：本馆藏志书目录已按版本分卷保存，供馆员核对。
+

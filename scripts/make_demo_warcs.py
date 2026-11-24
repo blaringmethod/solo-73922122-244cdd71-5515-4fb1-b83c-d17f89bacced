@@ -11,6 +11,13 @@ then one corrupt capture, then a revisit of V1.
   vol1b.warc  t1 response V1 only  -> replacing vol1 with this removes the
               last verified V2 body, so vol2's t3 revisit loses evidence
   conflict.warc  one response at t4 -> rejected (instant already held by vol2)
+
+A second bulletin is split across WARC volumes (WARC 1.1 segmentation):
+
+  seg-head.warc     s1  first segment of the response (segment 1)
+  seg-tail.warc     s1  final continuation (segment 2, WARC-Segment-Total-Length)
+  seg-witness.warc  s2  revisit of the same payload, evidencing it in another
+                        volume; loses evidence while the series is incomplete
 """
 from __future__ import annotations
 
@@ -32,16 +39,25 @@ T4 = "2024-12-01T09:00:00Z"
 T5 = "2025-03-01T09:00:00Z"
 T6 = "2025-06-01T09:00:00Z"
 
+SEG_URL = "http://gazetteer.example.gov.cn/zcgg/segmented-notice.html"
+SEG_BODY = "馆藏公告（分段版）：本馆藏志书目录已按版本分卷保存，供馆员核对。".encode()
+SEG_T1 = "2025-09-01T09:00:00Z"
+SEG_T2 = "2025-12-01T09:00:00Z"
+SEG_HEAD_ID = "urn:uuid:5e6f7a8b-0001-4000-8000-000000000001"
+SEG_SPLIT = 60
+
 
 def b32(data: bytes) -> str:
     return base64.b32encode(hashlib.sha1(data).digest()).decode().rstrip("=")
 
 
 def record(rtype, url, date, content=b"", digest=None,
-           content_type="application/http; msgtype=response", extra=()):
-    hdrs = ["WARC/1.0", f"WARC-Type: {rtype}", f"WARC-Target-URI: {url}",
-            f"WARC-Date: {date}", f"WARC-Record-ID: <urn:uuid:{uuid.uuid4()}>",
-            f"Content-Type: {content_type}"]
+           content_type="application/http; msgtype=response", extra=(),
+           version="1.0", record_id=None):
+    hdrs = [f"WARC/{version}", f"WARC-Type: {rtype}",
+            f"WARC-Target-URI: {url}", f"WARC-Date: {date}",
+            f"WARC-Record-ID: <{record_id or 'urn:uuid:' + str(uuid.uuid4())}>"]
+    hdrs.append(f"Content-Type: {content_type}")
     if digest is not None:
         hdrs.append(f"WARC-Payload-Digest: sha1:{digest}")
     hdrs.extend(extra)
@@ -57,6 +73,26 @@ def response(url, date, body, digest=None):
 def revisit(url, date, body_digest):
     http = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"
     return record("revisit", url, date, http, digest=body_digest)
+
+
+def segment_records():
+    """Return (head, tail, witness) WARC bytes for the segmented bulletin."""
+    http = (b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"
+            + SEG_BODY)
+    head, tail = http[:SEG_SPLIT], http[SEG_SPLIT:]
+    total = len(http)
+    head_rec = record(
+        "response", SEG_URL, SEG_T1, head, digest=b32(SEG_BODY),
+        extra=["WARC-Segment-Number: 1"],
+        version="1.1", record_id=SEG_HEAD_ID)
+    tail_rec = record(
+        "continuation", SEG_URL, SEG_T1, tail,
+        extra=[f"WARC-Segment-Origin-ID: <{SEG_HEAD_ID}>",
+               "WARC-Segment-Number: 2",
+               f"WARC-Segment-Total-Length: {total}"],
+        version="1.1")
+    witness = revisit(SEG_URL, SEG_T2, b32(SEG_BODY))
+    return head_rec, tail_rec, witness
 
 
 def main(out_dir):
@@ -75,8 +111,12 @@ def main(out_dir):
     vol1b = warcinfo + response(URL, T1, V1)
     conflict = response(URL, T4, V1)
 
+    seg_head, seg_tail, seg_witness = segment_records()
+
     for name, data in [("vol1.warc", vol1), ("vol2.warc", vol2),
-                       ("vol1b.warc", vol1b), ("conflict.warc", conflict)]:
+                       ("vol1b.warc", vol1b), ("conflict.warc", conflict),
+                       ("seg-head.warc", seg_head), ("seg-tail.warc", seg_tail),
+                       ("seg-witness.warc", seg_witness)]:
         path = os.path.join(out_dir, name)
         with open(path, "wb") as fh:
             fh.write(data)
